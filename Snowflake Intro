@@ -1,0 +1,130 @@
+Snowflake is a fully-managed cloud data platform—marketed today as the “AI Data Cloud.”
+It delivers a single place where you can store any kind of data, run SQL analytics, build pipelines, train or invoke large-language models, and securely share results inside or outside your organisation—all without owning or operating servers. 
+snowflake.com
+
+1 Why Snowflake came to be
+For decades analytic databases lived on fixed, on-prem hardware. Scaling meant buying a larger appliance, and every workload (nightly ETL, BI dashboards, data science notebooks) fought for the same CPUs. When cheap object storage and Hadoop arrived, companies tried “data lakes,” but those lakes lacked fast SQL, strong security, and reliable governance. Snowflake’s founders—former Oracle database architects—decided to design a cloud-native system that kept the ease and trust of a warehouse while gaining the elasticity and raw capacity of a lake. Their answer was a brand-new architecture that separates storage, compute, and control logic. 
+snowflake.com
+docs.snowflake.com
+
+2 How Snowflake is built
+Database Storage
+All data—structured, semi-structured, or unstructured—is written into compressed, columnar files that sit inside the object-store of the cloud you pick (AWS S3, Azure Blob, or Google Cloud Storage). Snowflake slices those files into ~50 MB micro-partitions and records statistics on each slice. When you query, the engine can instantly skip entire partitions that don’t match your filter (no indexes to manage). 
+docs.snowflake.com
+
+Virtual Warehouses (Compute)
+A warehouse is a short-lived cluster of VMs provisioned on demand. You start one in seconds, run queries, let it auto-suspend when idle, and pay only for the time it was awake. Because warehouses read the same shared storage, you can launch several in parallel—one for loading data, another for dashboards—without contention. If concurrency spikes, you can resize or even let the warehouse spin up extra clusters automatically. 
+snowflake.com
+
+Cloud Services Layer
+This always-on control plane parses SQL, plans queries, maintains metadata, enforces role-based access control, and holds the global result cache. Its compute cost is tiny and metered separately; cached results survive even when every warehouse is suspended because they live here, not in the transient clusters. 
+docs.snowflake.com
+
+The three layers are deployed entirely on the cloud platform you selected, so Snowflake feels like a native service whether you’re in AWS, Azure, or Google Cloud. You can even replicate databases across clouds or share data between them. 
+docs.snowflake.com
+
+3 Key capabilities you’ll hear about
+Elastic performance on a timer. Resize a warehouse or add clusters while queries run; suspend after a minute of idleness to stop spending credits.
+
+Micro-partition pruning. Those column statistics mean many queries read only a sliver of the physical bytes, delivering index-like speed with no tuning.
+
+Zero-copy cloning & Time Travel. Duplicate terabytes in seconds for dev/QA and query past versions of data for one to ninety days, edition-dependent.
+
+Secure Data Sharing & Marketplace. Grant live, read-only access to another Snowflake account without exporting files; the same mechanism powers public and private listings of third-party datasets.
+
+Governance baked in. Fine-grained roles, masking and row policies, object tagging, and an immutable access-history log are part of the core service—not bolt-ons. 
+docs.snowflake.com
+
+4 Snowflake and modern AI
+In the last two years Snowflake has folded managed large-language-model tooling directly into the platform under the banner Snowflake Cortex. With simple SQL functions you can embed or summarise text, run sentiment analysis, or call state-of-the-art chat models from OpenAI, Anthropic, Meta, and others—without moving data out of the governed environment. Cortex also powers “AISQL,” natural-language-to-SQL helpers, and Document AI for extracting facts from PDFs. 
+snowflake.com
+docs.snowflake.com
+snowflake.com
+
+5 A 30-second example to picture
+You load raw JSON clickstream logs into a VARIANT column.
+
+A Small warehouse runs an INSERT SELECT, shredding the JSON and writing the results into an analytics table.
+
+Marketing opens a dashboard; their separate Medium warehouse wakes, hits only the partitions for last week, and finishes in under a second—thanks to pruning.
+
+A data scientist tests a risky model; she clones the database, tries her updates, queries an hour later “as of” yesterday, then drops her clone—all without extra storage.
+
+Later, the team calls SELECT ai_extract_sentiment(comment) FROM reviews; and Cortex returns sentiment scores inline.
+
+Every step happens inside the same Snowflake account, controlled by RBAC, metered to the second, and fully recoverable if something goes wrong.
+
+6 Why organisations adopt it
+They stop managing infrastructure—no servers to patch, no Hadoop to tune.
+
+They avoid over-provisioning; compute runs only when there’s work.
+
+All users—from data engineers to BI analysts to ML teams—work on the same governed copy of data.
+
+Cross-company collaboration becomes as simple as granting a share instead of emailing CSV files.
+
+New AI capabilities arrive without a separate stack to secure or operate.
+
+That combination of simplicity, elasticity, built-in governance, and expanding AI features is what has made Snowflake one of the fastest-growing data platforms since its launch in 2015 and the centrepiece of many modern “data-cloud” strategies today.
+
+
+
+
+1. The Three-Layer Foundation
+Database Storage
+Snowflake keeps every piece of data in compressed, column-oriented files that sit inside the object-storage service of whatever cloud you choose (Amazon S3, Azure Blob Storage, or Google Cloud Storage).
+How it feels: you never touch folders or indexes; you just create tables and query them. Behind the scenes Snowflake slices data into ~50 MB “micro-partitions” and records stats (min/max values) for every column so it knows which slices to skip later.
+
+Virtual Warehouses (Compute)
+Think of a warehouse as a short-lived cluster of virtual machines. You spin it up when you run queries, set it to auto-pause when idle, and pay only for the seconds it’s awake. Because storage is separate, you can launch multiple warehouses against the same data—ETL on one, dashboards on another—without either job slowing the other down.
+
+Cloud Services Layer
+This is Snowflake’s “brain.” It authenticates users, parses SQL, builds query plans, enforces role-based access control, and holds the result cache. If you suspend a warehouse and later resume it, cached query results are still there because they live in this layer, not inside the compute nodes.
+
+Quick picture to keep in mind: storage is your hard drive, warehouses are CPUs you rent by the second, and the cloud-services layer is the operating system coordinating everything.
+
+
+
+2. Elastic Warehousing
+Because compute is fully detached from storage, resizing is as simple as flipping a switch. If a nightly load suddenly grows, you can bump a warehouse from Small to Large on the fly and finish faster—running queries are not cancelled. When the spike is over, scale back down or let the warehouse auto-suspend so credits stop ticking.
+
+ALTER WAREHOUSE nightly_wh SET WAREHOUSE_SIZE = 'LARGE';
+
+
+
+3. Micro-Partitions & Automatic Pruning
+Every table is physically organised into micro-partitions. Because each slice carries metadata like “rows 10 million–20 million where YEAR = 2025,” the optimizer can ignore huge sections of disk when you filter. That’s why Snowflake doesn’t ask you to build indexes—partition pruning usually does the job.
+
+Example in words: imagine 1 billion sales rows. If you run WHERE year = 2025, Snowflake may touch only the 3 % of partitions whose min/max year spans include 2025, giving near-index performance but with zero maintenance.
+
+
+4. Zero-Copy Clone
+Cloning a table, schema, or whole database in Snowflake duplicates only metadata pointers, not the underlying files. The operation finishes in seconds regardless of data size, giving you an isolate-but-lightweight sandbox for development or QA.
+
+CREATE DATABASE mydb_dev CLONE mydb_prod;
+From that moment on, changes in the clone are written to new partitions, while untouched data still references the original files—efficient and instantaneous.
+
+
+5. Time Travel
+Snowflake keeps old versions of micro-partitions for a retention window (1 day in Standard Edition, up to 90 days in higher tiers). You can query the data “as of” a past timestamp or undo a mistaken DROP with a simple command.
+
+SELECT * FROM orders AT (TIMESTAMP => '2025-06-20 10:00:00');
+
+This safety net makes experimentation much less stressful.
+
+6. Native Support for Semi-Structured Data
+A VARIANT column can hold JSON, Avro, Parquet—anything semi-structured. You load the raw files and use SQL path notation to reach into the nested fields.
+
+SELECT payload:customer.id::INT AS customer_id
+FROM raw_events;
+
+No need for a separate Hadoop cluster, and the data lives right beside your relational tables.
+
+
+7. Secure Data Sharing & the Marketplace
+Instead of extracting CSV files for partners, you grant them a share. They see the tables in their own account and query live, up-to-date data without any physical copy. The same mechanism powers Snowflake’s public Marketplace, where companies publish datasets you can subscribe to with a click.
+
+8. Governance Built-In
+Role-based access control is native, but Snowflake goes further with masking policies (for PII like SSNs), row-level filters, object tags, and an access history view that tracks who read what. These features are essential for regulated industries and appear on the exam.
+
+

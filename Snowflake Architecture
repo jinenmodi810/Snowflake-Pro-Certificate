@@ -1,2 +1,145 @@
-Snowflake Architecture(DDL, DML, Snowflake editions, Cloud providers, Snowflake SQL client and Snowflake layers)
 
+*****************************Snowflake Architecture(DDL, DML, Snowflake editions, Cloud providers, Snowflake SQL client and Snowflake layers)***********************************************
+
+
+Snowflake’s multi-cluster shared-data architecture is the design pattern that lets any number of independent compute clusters work on the same central copy of data without stepping on each other—and it does so elastically, adding or removing clusters in seconds. 
+
+The “shared-data” part: one authoritative storage layer
+All tables—structured, semi-structured, or unstructured—are stored once, in compressed column files that live inside the cloud-provider’s object store. Every compute cluster sees that single source of truth; no files are duplicated or shuffled around when demand grows. Internally, Snowflake slices the data into ~50 MB micro-partitions and tracks statistics for each slice, so queries can prune away irrelevant partitions instead of relying on indexes. 
+docs.snowflake.com
+
+2 The “multi-cluster” part: many isolated warehouses
+A virtual warehouse is a short-lived MPP cluster provisioned on demand. Ordinarily one warehouse equals one cluster, but Snowflake lets you turn any warehouse into a multi-cluster warehouse by specifying a minimum and maximum number of sibling clusters. When user or query concurrency rises and statements begin to queue, Snowflake quietly spins up extra clusters behind that same warehouse name; when activity falls off, the extras spin down just as quietly. 
+docs.snowflake.com
+
+Two operating modes
+Auto-scale – give Snowflake a range (e.g., 1 ⇢ 3 clusters). It starts new clusters only when the current ones are saturated, then suspends them after a configurable quiet period.
+
+Maximized – set min = max > 1 (e.g., 4 ⇢ 4). All clusters start together and stay up, guaranteeing fixed capacity for consistently heavy loads. 
+docs.snowflake.com
+docs.snowflake.com
+
+Upper limits depend on warehouse size: an X-Small can reach up to 300 clusters, while a 6XL tops out at 10. Each additional cluster consumes the same credits as the first; a Medium warehouse at 3 clusters will at most burn 12 credits per full hour, but in auto-scale mode the figure drops automatically whenever fewer clusters are running. 
+docs.snowflake.com
+
+3 Why this design solves real-world pain points
+Unlimited, non-blocking concurrency – ETL jobs, BI dashboards, ad-hoc analyst queries, and data-science notebooks can each have their own compute slice while reading exactly the same data. None waits for locks or steals CPU from the others. 
+docs.snowflake.com
+docs.snowflake.com
+
+Elastic costs – you pay only for clusters that are actually online. During a Black-Friday surge, three clusters may run for an hour; by midnight you’re back to one, and credits follow suit. 
+docs.snowflake.com
+
+No data copies, no rebalancing – because every cluster taps the same storage layer, ramp-up and ramp-down require zero data movement—just API calls to the cloud provider.
+
+Simple operations – a DBA no longer has to script extra queues, replicas, or connection routing. Users keep pointing at the warehouse name; Snowflake routes the work internally.
+
+(Note that multi-cluster is aimed at concurrency. If a single query is slow, resize the warehouse to a larger size instead of adding clusters.)
+
+
+4 Creating and tuning a multi-cluster warehouse
+
+-- one-liner: start small, let Snowflake grow on demand
+CREATE WAREHOUSE team_wh
+  WAREHOUSE_SIZE     = 'MEDIUM'
+  MAX_CLUSTER_COUNT  = 3   -- up to three sibling clusters
+  MIN_CLUSTER_COUNT  = 1   -- auto-scale mode
+  SCALING_POLICY     = 'ECONOMY'  -- start extra clusters only when queues build
+  AUTO_SUSPEND       = 120  -- seconds
+  AUTO_RESUME        = TRUE;
+
+
+SCALING_POLICY controls how aggressively Snowflake adds clusters (ECONOMY, STANDARD, AUTOMATIC).
+
+Monitor WAREHOUSE_LOAD_HISTORY or the Snowsight workload charts; if queues still grow, either raise MAX_CLUSTER_COUNT or grow the base warehouse size.
+
+When usage is predictable (e.g., 8 a.m. trading burst), schedule ALTER WAREHOUSE before the peak to switch temporarily into maximized mode.
+
+5 Exam-style checkpoints
+Your dashboard users complain of queuing at month-end, but individual queries already finish fast when they run. → Enable a multi-cluster warehouse or raise its MAX_CLUSTER_COUNT; resizing alone won’t fix concurrency.
+
+True or False – each extra cluster in a multi-cluster warehouse has its own copy of the data. → False; all clusters read the shared storage layer.
+
+What happens if MIN_CLUSTER_COUNT = MAX_CLUSTER_COUNT = 4? → The warehouse launches four clusters immediately and keeps them running until it suspends.
+
+
+
+
+
+****************************Questions*********************************************
+
+
+Your MEDIUM warehouse is showing long query queues at 9 a.m. but individual queries finish quickly once they start. Which single property change will most directly relieve the congestion?
+
+True or False – In a multi-cluster warehouse running in Auto-scale mode, Snowflake will automatically shut down extra clusters when no statements are queued and the remaining clusters are lightly loaded.
+
+What parameter pair must you set to convert a single-cluster warehouse into a multi-cluster warehouse?
+
+A data-science team wants four identical clusters online all the time between 07:00 and 13:00. What values should you give MIN_CLUSTER_COUNT and MAX_CLUSTER_COUNT?
+
+Your Finance warehouse is configured with MIN_CLUSTER_COUNT = 1 and MAX_CLUSTER_COUNT = 3. At noon Snowsight shows started_clusters = 3 but queued_statements = 0. What will Snowflake likely do next (assume default scaling policy)?
+
+Explain in one sentence why multi-cluster warehouses eliminate the need to copy data when adding compute capacity.
+
+Choose the best action when one single query is running slowly on an X-Small warehouse:
+a) raise MAX_CLUSTER_COUNT b) raise WAREHOUSE_SIZE c) set SCALING_POLICY = ECONOMY d) lower AUTO_SUSPEND
+
+Which scaling policy favors keeping running clusters fuller before starting new clusters, helping to reduce credit burn?
+
+The upper limit for MAX_CLUSTER_COUNT used to be 10 for all warehouses. A February 2025 release note changed this rule. What is the new behavior?
+
+When you execute SHOW WAREHOUSES, which column tells you how many sibling clusters are currently running?
+
+True or False – Multi-cluster warehouses require Snowflake Enterprise Edition or higher.
+
+Name two situations where you would prefer Maximized mode over Auto-scale mode.
+
+If SCALING_POLICY = STANDARD, what event triggers Snowflake to spin up an additional cluster?
+
+What SQL command lets you change MIN_CLUSTER_COUNT on an existing warehouse without dropping it?
+
+In a scenario where query latency must remain <2 seconds but traffic is unpredictable, which combination is most appropriate?
+a) Auto-scale 1→1, ECONOMY b) Auto-scale 1→4, STANDARD c) Maximized 4→4, ECONOMY d) Single-cluster Large warehouse
+
+Answer Key & Explanations
+Increase MAX_CLUSTER_COUNT (thereby enabling additional sibling clusters). The bottleneck is concurrency, not single-query CPU. 
+docs.snowflake.com
+
+True. In Auto-scale mode Snowflake spins clusters down automatically when load subsides. 
+docs.snowflake.com
+
+MIN_CLUSTER_COUNT and MAX_CLUSTER_COUNT. Setting either above 1 defines a multi-cluster warehouse. 
+docs.snowflake.com
+
+MIN_CLUSTER_COUNT = 4, MAX_CLUSTER_COUNT = 4 – this is Maximized mode with four clusters always up. 
+docs.snowflake.com
+
+With the default SCALING_POLICY = STANDARD, Snowflake will shut down one cluster at a time until workload on the remaining clusters exceeds thresholds or MIN_CLUSTER_COUNT is reached. So it will soon drop to 2 started clusters. 
+docs.snowflake.com
+
+Because every cluster reads the same central storage layer, adding clusters means provisioning extra compute only; no data movement or replication is required.
+
+b) raise WAREHOUSE_SIZE – a larger node gives more CPU/memory per query; extra clusters help concurrency but not a single heavy query. 
+docs.snowflake.com
+
+ECONOMY. It delays starting new clusters until existing ones are well-utilized. 
+docs.snowflake.com
+
+As of Feb 28 2025, the limit varies by warehouse size, and values above 10 are allowed via SQL for larger sizes. 
+docs.snowflake.com
+
+STARTED_CLUSTERS. It shows the real-time count of clusters Snowflake has running. 
+docs.snowflake.com
+
+True. Multi-cluster capability is available in Enterprise Edition and higher. 
+docs.snowflake.com
+
+Examples: a) highly predictable surge windows like market open where you want guaranteed throughput, b) service-level agreements that prohibit any queuing.
+
+When the current clusters’ queued statements exceed an internal threshold—STANDARD prioritizes minimizing queue wait time. 
+docs.snowflake.com
+
+ALTER WAREHOUSE <name> SET MIN_CLUSTER_COUNT = <n>; (or change MAX_CLUSTER_COUNT similarly). 
+docs.snowflake.com
+
+b) Auto-scale 1→4 with STANDARD – allows elasticity up to four clusters and starts new ones aggressively when latency would otherwise rise.
